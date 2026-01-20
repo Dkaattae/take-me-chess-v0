@@ -5,11 +5,11 @@ import { ChessPiece } from './chess-pieces'
 import { cn } from '@/lib/utils'
 
 export function ChessBoard() {
-  const { gameState, selectPiece, movePiece } = useGame()
+  const { gameState, selectPiece, movePiece, setPendingMove } = useGame()
   
   if (!gameState) return null
   
-  const { board, selectedPiece, legalMoves, takeMeState, currentTurn } = gameState
+  const { board, selectedPiece, legalMoves, takeMeState, currentTurn, pendingMove } = gameState
   
   const handleSquareClick = (row: number, col: number) => {
     const piece = board[row][col]
@@ -17,7 +17,11 @@ export function ChessBoard() {
     // Check if clicking on a legal move destination
     const isLegalMove = legalMoves.some(m => m.row === row && m.col === col)
     if (isLegalMove && selectedPiece) {
-      movePiece({ row, col })
+      if (takeMeState.mustCapture) {
+        movePiece({ row, col })
+      } else {
+        setPendingMove({ from: selectedPiece, to: { row, col } })
+      }
       return
     }
     

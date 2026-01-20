@@ -52,6 +52,7 @@ export interface GameState {
   takeMeState: TakeMeState
   moveHistory: Move[]
   pieceCount: { white: number; black: number }
+  pendingMove: { from: Square; to: Square } | null
 }
 
 export interface LeaderboardEntry {

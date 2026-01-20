@@ -1,0 +1,727 @@
+openapi: 3.0.3
+info:
+  title: Take-Me Chess API
+  description: Backend API for Take-Me Chess game - a fun chess variant where players try to lose all their pieces
+  version: 1.0.0
+  contact:
+    name: Take-Me Chess Development Team
+
+servers:
+  - url: https://api.take-me-chess.com/v1
+    description: Production server
+  - url: http://localhost:3001/v1
+    description: Development server
+
+components:
+  schemas:
+    PieceType:
+      type: string
+      enum: [king, queen, rook, bishop, knight, pawn]
+
+    PieceColor:
+      type: string
+      enum: [white, black]
+
+    Piece:
+      type: object
+      properties:
+        type:
+          $ref: '#/components/schemas/PieceType'
+        color:
+          $ref: '#/components/schemas/PieceColor'
+      required: [type, color]
+
+    Square:
+      type: object
+      properties:
+        row:
+          type: integer
+          minimum: 0
+          maximum: 7
+        col:
+          type: integer
+          minimum: 0
+          maximum: 7
+      required: [row, col]
+
+    Move:
+      type: object
+      properties:
+        from:
+          $ref: '#/components/schemas/Square'
+        to:
+          $ref: '#/components/schemas/Square'
+        piece:
+          $ref: '#/components/schemas/Piece'
+        capturedPiece:
+          $ref: '#/components/schemas/Piece'
+        isPromotion:
+          type: boolean
+        promotionPiece:
+          $ref: '#/components/schemas/PieceType'
+      required: [from, to, piece]
+
+    BoardState:
+      type: array
+      items:
+        type: array
+        items:
+          $ref: '#/components/schemas/Piece'
+        minItems: 8
+        maxItems: 8
+      minItems: 8
+      maxItems: 8
+
+    Player:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique player identifier
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        color:
+          $ref: '#/components/schemas/PieceColor'
+        isBot:
+          type: boolean
+          default: false
+        avatar:
+          type: string
+          description: Avatar emoji or URL
+      required: [id, name, color]
+
+    GameStatus:
+      type: string
+      enum: [setup, active, win, draw]
+
+    GameMode:
+      type: string
+      enum: [1P, 2P]
+
+    TakeMeState:
+      type: object
+      properties:
+        declared:
+          type: boolean
+        declarer:
+          $ref: '#/components/schemas/PieceColor'
+        exposedPieces:
+          type: array
+          items:
+            $ref: '#/components/schemas/Square'
+        capturablePieces:
+          type: array
+          items:
+            $ref: '#/components/schemas/Square'
+        mustCapture:
+          type: boolean
+      required: [declared, exposedPieces, capturablePieces, mustCapture]
+
+    GameState:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique game session identifier
+        board:
+          $ref: '#/components/schemas/BoardState'
+        currentTurn:
+          $ref: '#/components/schemas/PieceColor'
+        players:
+          type: array
+          items:
+            $ref: '#/components/schemas/Player'
+          minItems: 2
+          maxItems: 2
+        status:
+          $ref: '#/components/schemas/GameStatus'
+        winner:
+          $ref: '#/components/schemas/Player'
+        selectedPiece:
+          $ref: '#/components/schemas/Square'
+        legalMoves:
+          type: array
+          items:
+            $ref: '#/components/schemas/Square'
+        takeMeState:
+          $ref: '#/components/schemas/TakeMeState'
+        moveHistory:
+          type: array
+          items:
+            $ref: '#/components/schemas/Move'
+        pieceCount:
+          type: object
+          properties:
+            white:
+              type: integer
+              minimum: 0
+            black:
+              type: integer
+              minimum: 0
+          required: [white, black]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, board, currentTurn, players, status, takeMeState, moveHistory, pieceCount, createdAt, updatedAt]
+
+    LeaderboardEntry:
+      type: object
+      properties:
+        playerName:
+          type: string
+        wins:
+          type: integer
+          minimum: 0
+        losses:
+          type: integer
+          minimum: 0
+        draws:
+          type: integer
+          minimum: 0
+        gameMode:
+          $ref: '#/components/schemas/GameMode'
+        lastPlayed:
+          type: string
+          format: date-time
+      required: [playerName, wins, losses, draws, gameMode]
+
+    CreateGameRequest:
+      type: object
+      properties:
+        gameMode:
+          $ref: '#/components/schemas/GameMode'
+        players:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                minLength: 1
+                maxLength: 50
+              isBot:
+                type: boolean
+            required: [name]
+          minItems: 2
+          maxItems: 2
+      required: [gameMode, players]
+
+    MakeMoveRequest:
+      type: object
+      properties:
+        from:
+          $ref: '#/components/schemas/Square'
+        to:
+          $ref: '#/components/schemas/Square'
+        promotionPiece:
+          $ref: '#/components/schemas/PieceType'
+      required: [from, to]
+
+    DeclareTakeMeRequest:
+      type: object
+      properties:
+        from:
+          $ref: '#/components/schemas/Square'
+        to:
+          $ref: '#/components/schemas/Square'
+        promotionPiece:
+          $ref: '#/components/schemas/PieceType'
+      required: [from, to]
+
+    BotMoveResponse:
+      type: object
+      properties:
+        move:
+          $ref: '#/components/schemas/Move'
+        declareTakeMe:
+          type: boolean
+      required: [move, declareTakeMe]
+
+    ValidationResponse:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        legalMoves:
+          type: array
+          items:
+            $ref: '#/components/schemas/Square'
+        error:
+          type: string
+      required: [valid]
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        details:
+          type: object
+      required: [error, code]
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for authentication (optional for public endpoints)
+
+paths:
+  /games:
+    post:
+      summary: Create a new game session
+      description: Initialize a new Take-Me Chess game with the specified mode and players
+      operationId: createGame
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGameRequest'
+      responses:
+        '201':
+          description: Game created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameState'
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /games/{gameId}:
+    get:
+      summary: Get game state
+      description: Retrieve the current state of a game session
+      operationId: getGame
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique game session identifier
+      responses:
+        '200':
+          description: Game state retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameState'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: End game session
+      description: Terminate a game session and save the result
+      operationId: endGame
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique game session identifier
+      responses:
+        '200':
+          description: Game ended successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  finalState:
+                    $ref: '#/components/schemas/GameState'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /games/{gameId}/moves:
+    post:
+      summary: Make a move
+      description: Execute a move in the game and update the game state
+      operationId: makeMove
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique game session identifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MakeMoveRequest'
+      responses:
+        '200':
+          description: Move executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameState'
+        '400':
+          description: Invalid move
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Not player's turn
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /games/{gameId}/moves/validate:
+    post:
+      summary: Validate a potential move
+      description: Check if a move is legal without executing it
+      operationId: validateMove
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique game session identifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MakeMoveRequest'
+      responses:
+        '200':
+          description: Move validation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationResponse'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /games/{gameId}/take-me:
+    post:
+      summary: Declare "Take Me!"
+      description: Execute a "Take Me!" declaration with the specified move
+      operationId: declareTakeMe
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique game session identifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeclareTakeMeRequest'
+      responses:
+        '200':
+          description: Take Me! declared successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameState'
+        '400':
+          description: Invalid declaration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Not player's turn or invalid conditions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /games/{gameId}/bot-move:
+    post:
+      summary: Get bot move
+      description: Calculate and execute the next move for a bot player
+      operationId: getBotMove
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique game session identifier
+      responses:
+        '200':
+          description: Bot move executed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  gameState:
+                    $ref: '#/components/schemas/GameState'
+                  botMove:
+                    $ref: '#/components/schemas/BotMoveResponse'
+        '403':
+          description: Not bot's turn
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /games/{gameId}/legal-moves:
+    get:
+      summary: Get legal moves for selected piece
+      description: Retrieve all legal moves for a specific piece
+      operationId: getLegalMoves
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique game session identifier
+        - name: row
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 7
+          description: Row of the selected piece
+        - name: col
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 7
+          description: Column of the selected piece
+      responses:
+        '200':
+          description: Legal moves retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  legalMoves:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Square'
+        '400':
+          description: Invalid piece selection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /leaderboard:
+    get:
+      summary: Get leaderboard
+      description: Retrieve the current leaderboard rankings
+      operationId: getLeaderboard
+      parameters:
+        - name: gameMode
+          in: query
+          schema:
+            $ref: '#/components/schemas/GameMode'
+          description: Filter by game mode (optional)
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+          description: Maximum number of entries to return
+      responses:
+        '200':
+          description: Leaderboard retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  leaderboard:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeaderboardEntry'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /leaderboard:
+    post:
+      summary: Submit game result
+      description: Record the result of a completed game
+      operationId: submitGameResult
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                gameId:
+                  type: string
+                winner:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    isBot:
+                      type: boolean
+                  required: [name, isBot]
+                gameMode:
+                  $ref: '#/components/schemas/GameMode'
+                duration:
+                  type: integer
+                  description: Game duration in seconds
+              required: [gameId, winner, gameMode]
+      responses:
+        '201':
+          description: Game result recorded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  updatedLeaderboard:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeaderboardEntry'
+        '400':
+          description: Invalid game result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /health:
+    get:
+      summary: Health check
+      description: Check if the API is running
+      operationId: healthCheck
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+                  timestamp:
+                    type: string
+                    format: date-time

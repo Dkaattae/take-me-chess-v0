@@ -7,7 +7,7 @@ import { Megaphone, X, Check, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export function TakeMeControls() {
-  const { gameState, declareTakeMe, cancelTakeMe, confirmTakeMe } = useGame()
+  const { gameState, declareTakeMe, cancelTakeMe, confirmTakeMe, movePiece, declareMove, setPendingMove } = useGame()
   
   if (!gameState || gameState.status !== 'active') return null
   
@@ -45,7 +45,10 @@ export function TakeMeControls() {
         <Card className="border-2 border-accent bg-accent/10">
           <CardContent className="p-4 space-y-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-accent flex items-center justify-center animate-pulse">
+              <div className={cn(
+                "w-10 h-10 rounded-full bg-accent flex items-center justify-center",
+                players.find(p => p.color === takeMeState.declarer)?.isBot && "animate-pulse"
+              )}>
                 <Megaphone className="w-5 h-5 text-accent-foreground" />
               </div>
               <div>
@@ -73,6 +76,40 @@ export function TakeMeControls() {
             </div>
           </CardContent>
         </Card>
+      </div>
+    )
+  }
+  
+  // Show move options when a move is pending
+  if (gameState.pendingMove) {
+    return (
+      <div className="absolute -top-20 left-1/2 -translate-x-1/2">
+        <div className="flex gap-2">
+          <Button 
+            onClick={() => {
+              movePiece(gameState.pendingMove!.to)
+              setPendingMove(null)
+            }}
+            size="lg"
+            className="h-12 px-6 text-lg font-bold bg-primary hover:bg-primary/90 text-primary-foreground"
+          >
+            Move
+          </Button>
+          <Button 
+            onClick={() => {
+              declareMove()
+            }}
+            size="lg"
+            className={cn(
+              "h-12 px-6 text-lg font-bold",
+              "bg-accent hover:bg-accent/90 text-accent-foreground",
+              "shadow-lg hover:shadow-xl transition-all"
+            )}
+          >
+            <Megaphone className="w-5 h-5 mr-2" />
+            Take Me!
+          </Button>
+        </div>
       </div>
     )
   }
