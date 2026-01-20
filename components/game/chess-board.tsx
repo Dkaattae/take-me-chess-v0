@@ -47,7 +47,7 @@ export function ChessBoard() {
     <div className="relative">
       {/* Board container with shadow and rounded corners */}
       <div className="rounded-xl overflow-hidden shadow-2xl border-4 border-foreground/20">
-        <div className="grid grid-cols-8 w-[320px] h-[320px] sm:w-[400px] sm:h-[400px] md:w-[480px] md:h-[480px]">
+        <div className="grid grid-cols-8 grid-rows-8 w-[320px] h-[320px] sm:w-[400px] sm:h-[400px] md:w-[480px] md:h-[480px]">
           {board.map((row, rowIndex) =>
             row.map((piece, colIndex) => {
               const isLight = (rowIndex + colIndex) % 2 === 0
@@ -62,7 +62,7 @@ export function ChessBoard() {
                   key={`${rowIndex}-${colIndex}`}
                   onClick={() => handleSquareClick(rowIndex, colIndex)}
                   className={cn(
-                    "relative flex items-center justify-center transition-all duration-200",
+                    "relative flex items-center justify-center transition-all duration-200 h-full w-full",
                     "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
                     isLight ? "bg-square-light" : "bg-square-dark",
                     isSelected && "ring-4 ring-inset ring-primary",
@@ -104,7 +104,7 @@ export function ChessBoard() {
       </div>
       
       {/* Rank labels (1-8) */}
-      <div className="absolute left-0 top-0 bottom-8 flex flex-col justify-around -ml-5">
+      <div className="absolute left-0 top-1 bottom-1 flex flex-col justify-around -ml-5">
         {[8, 7, 6, 5, 4, 3, 2, 1].map(rank => (
           <span key={rank} className="text-xs font-medium text-muted-foreground h-[40px] sm:h-[50px] md:h-[60px] flex items-center">
             {rank}

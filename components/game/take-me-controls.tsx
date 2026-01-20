@@ -20,7 +20,7 @@ export function TakeMeControls() {
   // If opponent declared Take Me!, show warning
   if (takeMeState.mustCapture && takeMeState.declarer !== currentTurn) {
     return (
-      <div className="absolute -bottom-20 left-1/2 -translate-x-1/2 w-full max-w-[320px]">
+      <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-full max-w-[280px]">
         <Card className="border-2 border-destructive bg-destructive/10">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
@@ -41,7 +41,7 @@ export function TakeMeControls() {
   // If Take Me! is being declared (confirmation step)
   if (takeMeState.declared && takeMeState.declarer === currentTurn) {
     return (
-      <div className="absolute -bottom-24 left-1/2 -translate-x-1/2 w-full max-w-[320px]">
+      <div className="absolute -top-28 left-1/2 -translate-x-1/2 w-full max-w-[280px]">
         <Card className="border-2 border-accent bg-accent/10">
           <CardContent className="p-4 space-y-3">
             <div className="flex items-center gap-3">
@@ -80,7 +80,7 @@ export function TakeMeControls() {
   // Show "Take Me!" button when a piece is selected
   if (selectedPiece && gameState.legalMoves.length > 0) {
     return (
-      <div className="absolute -bottom-16 left-1/2 -translate-x-1/2">
+      <div className="absolute -top-16 left-1/2 -translate-x-1/2">
         <Button 
           onClick={declareTakeMe}
           size="lg"
