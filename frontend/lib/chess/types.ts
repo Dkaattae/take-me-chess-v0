@@ -24,6 +24,7 @@ export interface Move {
 export type BoardState = (Piece | null)[][]
 
 export interface Player {
+  id?: string // Added for API compatibility
   name: string
   color: PieceColor
   isBot: boolean
@@ -35,24 +36,27 @@ export type GameMode = '1P' | '2P'
 
 export interface TakeMeState {
   declared: boolean
-  declarer: PieceColor | null
+  declarer?: PieceColor // Made optional for API compatibility
   exposedPieces: Square[]
   capturablePieces: Square[]
   mustCapture: boolean
 }
 
 export interface GameState {
+  id?: string // Added for API compatibility
   board: BoardState
   currentTurn: PieceColor
   players: Player[]
   status: GameStatus
-  winner: Player | null
-  selectedPiece: Square | null
-  legalMoves: Square[]
+  winner?: Player | null
+  selectedPiece?: Square | null
+  legalMoves?: Square[]
   takeMeState: TakeMeState
   moveHistory: Move[]
   pieceCount: { white: number; black: number }
-  pendingMove: { from: Square; to: Square } | null
+  pendingMove?: { from: Square; to: Square } | null
+  createdAt?: string // Added for API compatibility
+  updatedAt?: string // Added for API compatibility
 }
 
 export interface LeaderboardEntry {
@@ -61,4 +65,5 @@ export interface LeaderboardEntry {
   losses: number
   draws: number
   gameMode: GameMode
+  lastPlayed?: string // Added for API compatibility
 }

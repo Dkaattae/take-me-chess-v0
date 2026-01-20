@@ -1,16 +1,11 @@
 "use client"
 
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
-import type { 
-  GameState, Player, GameMode, PieceColor, Square, Move, 
-  TakeMeState, LeaderboardEntry 
+import type {
+  GameState, Player, GameMode, PieceColor, Square, Move,
+  TakeMeState, LeaderboardEntry
 } from './types'
-import { 
-  createInitialBoard, createInitialTakeMeState, countPieces, 
-  getLegalMoves, makeMove, shouldPromote, checkWinCondition,
-  checkStalemate, getCaptureMoves, findExposedPieces,
-  getCapturablePiecesAfterTakeMe
-} from './game-logic'
+import { gameApi, handleApiError, type ApiGameState, type ApiLeaderboardEntry } from '../api/client'
 import { getBotMove, generateBotName, generateBotAvatar } from './bot'
 
 type GameScreen = 'menu' | 'setup' | 'game' | 'leaderboard'
@@ -19,32 +14,36 @@ interface GameContextType {
   // Screen navigation
   currentScreen: GameScreen
   setCurrentScreen: (screen: GameScreen) => void
-  
+
   // Game mode and setup
   gameMode: GameMode | null
   setGameMode: (mode: GameMode) => void
-  
+
   // Players
   players: Player[]
   setPlayerName: (index: number, name: string) => void
-  
+
   // Game state
   gameState: GameState | null
-  
+  isLoading: boolean
+  error: string | null
+
   // Actions
-  startGame: () => void
-  selectPiece: (square: Square) => void
-  movePiece: (to: Square) => void
+  startGame: () => Promise<void>
+  selectPiece: (square: Square) => Promise<void>
+  movePiece: (to: Square) => Promise<void>
   declareTakeMe: () => void
   cancelTakeMe: () => void
-  confirmTakeMe: () => void
+  confirmTakeMe: () => Promise<void>
   declareMove: () => void
   setPendingMove: (move: { from: Square; to: Square } | null) => void
   resetGame: () => void
-  
+  endGame: () => Promise<void>
+
   // Leaderboard
   leaderboard: LeaderboardEntry[]
-  
+  loadLeaderboard: (gameMode?: GameMode) => Promise<void>
+
   // Audio
   isMuted: boolean
   toggleMute: () => void
@@ -53,14 +52,52 @@ interface GameContextType {
 
 const GameContext = createContext<GameContextType | null>(null)
 
-// Mock leaderboard data
-const mockLeaderboard: LeaderboardEntry[] = [
-  { playerName: 'ChessKid123', wins: 15, losses: 5, draws: 2, gameMode: '1P' },
-  { playerName: 'PawnMaster', wins: 12, losses: 8, draws: 3, gameMode: '2P' },
-  { playerName: 'QueenBee', wins: 10, losses: 4, draws: 1, gameMode: '1P' },
-  { playerName: 'KnightRider', wins: 8, losses: 6, draws: 4, gameMode: '2P' },
-  { playerName: 'RookieStar', wins: 7, losses: 9, draws: 2, gameMode: '1P' },
-]
+// Convert API types to frontend types
+const convertApiGameState = (apiState: ApiGameState): GameState => ({
+  id: apiState.id,
+  board: apiState.board,
+  currentTurn: apiState.currentTurn,
+  players: apiState.players.map(player => ({
+    id: player.id,
+    name: player.name,
+    color: player.color,
+    isBot: player.isBot,
+    avatar: player.avatar
+  })),
+  status: apiState.status,
+  winner: apiState.winner ? {
+    id: apiState.winner.id,
+    name: apiState.winner.name,
+    color: apiState.winner.color,
+    isBot: apiState.winner.isBot,
+    avatar: apiState.winner.avatar
+  } : null,
+  selectedPiece: apiState.selectedPiece || null,
+  legalMoves: apiState.legalMoves || [],
+  takeMeState: {
+    declared: apiState.takeMeState.declared,
+    declarer: apiState.takeMeState.declarer || null,
+    exposedPieces: apiState.takeMeState.exposedPieces,
+    capturablePieces: apiState.takeMeState.capturablePieces,
+    mustCapture: apiState.takeMeState.mustCapture
+  },
+  moveHistory: apiState.moveHistory,
+  pieceCount: apiState.pieceCount,
+  pendingMove: null,
+  createdAt: apiState.createdAt,
+  updatedAt: apiState.updatedAt
+})
+
+const convertApiLeaderboard = (apiLeaderboard: ApiLeaderboardEntry[]): LeaderboardEntry[] => {
+  return apiLeaderboard.map(entry => ({
+    playerName: entry.playerName,
+    wins: entry.wins,
+    losses: entry.losses,
+    draws: entry.draws,
+    gameMode: entry.gameMode,
+    lastPlayed: entry.lastPlayed
+  }))
+}
 
 export function GameProvider({ children }: { children: ReactNode }) {
   const [currentScreen, setCurrentScreen] = useState<GameScreen>('menu')
@@ -70,9 +107,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
     { name: '', color: 'black', isBot: false }
   ])
   const [gameState, setGameState] = useState<GameState | null>(null)
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>(mockLeaderboard)
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
   const [isMuted, setIsMuted] = useState(false)
-  
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
   const setGameMode = useCallback((mode: GameMode) => {
     setGameModeState(mode)
     if (mode === '1P') {
@@ -89,7 +128,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     setCurrentScreen('setup')
   }, [])
-  
+
   const setPlayerName = useCallback((index: number, name: string) => {
     setPlayers(prev => {
       const newPlayers = [...prev]
@@ -97,406 +136,197 @@ export function GameProvider({ children }: { children: ReactNode }) {
       return newPlayers
     })
   }, [])
-  
-  const startGame = useCallback(() => {
-    const board = createInitialBoard()
-    const pieceCount = countPieces(board)
-    
-    setGameState({
-      board,
-      currentTurn: 'white',
-      players,
-      status: 'active',
-      winner: null,
-      selectedPiece: null,
-      legalMoves: [],
-      takeMeState: createInitialTakeMeState(),
-      moveHistory: [],
-      pieceCount,
-      pendingMove: null
-    })
-    setCurrentScreen('game')
-  }, [players])
-  
-  const selectPiece = useCallback((square: Square) => {
-    if (!gameState || gameState.status !== 'active') return
-    
-    const piece = gameState.board[square.row][square.col]
-    if (!piece || piece.color !== gameState.currentTurn) return
-    
-    let moves = getLegalMoves(gameState.board, square)
-    
-    // If must capture, filter to only capture moves on exposed pieces
-    if (gameState.takeMeState.mustCapture) {
-      moves = moves.filter(move => 
-        gameState.takeMeState.capturablePieces.some(
-          p => p.row === move.row && p.col === move.col
-        )
-      )
+
+  const startGame = useCallback(async () => {
+    if (!gameMode) return
+
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const apiPlayers = players.map(player => ({
+        name: player.name,
+        is_bot: player.isBot
+      }))
+
+      const apiGameState = await gameApi.createGame({
+        game_mode: gameMode,
+        players: apiPlayers
+      })
+
+      const frontendGameState = convertApiGameState(apiGameState)
+      setGameState(frontendGameState)
+      setCurrentScreen('game')
+    } catch (err) {
+      const apiError = handleApiError(err)
+      setError(apiError.error)
+    } finally {
+      setIsLoading(false)
     }
-    
-    setGameState(prev => prev ? {
-      ...prev,
-      selectedPiece: square,
-      legalMoves: moves,
-      pendingMove: null
-    } : null)
+  }, [gameMode, players])
+
+  const selectPiece = useCallback(async (square: Square) => {
+    if (!gameState || gameState.status !== 'active' || !gameState.id) return
+
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const response = await gameApi.getLegalMoves(gameState.id, square.row, square.col)
+
+      setGameState(prev => prev ? {
+        ...prev,
+        selectedPiece: square,
+        legalMoves: response.legalMoves,
+        pendingMove: null
+      } : null)
+    } catch (err) {
+      const apiError = handleApiError(err)
+      setError(apiError.error)
+    } finally {
+      setIsLoading(false)
+    }
   }, [gameState])
-  
+
+  const movePiece = useCallback(async (to: Square) => {
+    if (!gameState || !gameState.selectedPiece || !gameState.id) return
+
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const moveRequest = {
+        from: gameState.selectedPiece,
+        to
+      }
+
+      const apiGameState = await gameApi.makeMove(gameState.id, moveRequest)
+      const frontendGameState = convertApiGameState(apiGameState)
+
+      setGameState(frontendGameState)
+
+      // Check if it's bot's turn and handle bot move
+      if (frontendGameState.status === 'active' && frontendGameState.players.find(p => p.color === frontendGameState.currentTurn)?.isBot) {
+        // Bot's turn - get bot move
+        try {
+          const botResponse = await gameApi.getBotMove(frontendGameState.id!)
+          const updatedGameState = convertApiGameState(botResponse.gameState)
+          setGameState(updatedGameState)
+        } catch (botErr) {
+          const apiError = handleApiError(botErr)
+          setError(`Bot move failed: ${apiError.error}`)
+        }
+      }
+
+      playSound('move')
+    } catch (err) {
+      const apiError = handleApiError(err)
+      setError(apiError.error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [gameState])
+
+  const declareTakeMe = useCallback(() => {
+    // This would be implemented for Take Me! declarations
+    // For now, just a placeholder
+  }, [])
+
+  const cancelTakeMe = useCallback(() => {
+    // This would be implemented for Take Me! cancellations
+    // For now, just a placeholder
+  }, [])
+
+  const confirmTakeMe = useCallback(async () => {
+    // This would be implemented for Take Me! confirmations
+    // For now, just a placeholder
+  }, [])
+
+  const declareMove = useCallback(() => {
+    // This would be implemented for move declarations
+    // For now, just a placeholder
+  }, [])
+
+  const setPendingMove = useCallback((move: { from: Square; to: Square } | null) => {
+    setGameState(prev => prev ? { ...prev, pendingMove: move } : null)
+  }, [])
+
+  const resetGame = useCallback(() => {
+    setGameState(null)
+    setCurrentScreen('menu')
+    setGameModeState(null)
+    setError(null)
+  }, [])
+
+  const endGame = useCallback(async () => {
+    if (!gameState?.id) return
+
+    setIsLoading(true)
+    try {
+      await gameApi.endGame(gameState.id)
+      setGameState(null)
+      setCurrentScreen('menu')
+    } catch (err) {
+      const apiError = handleApiError(err)
+      setError(apiError.error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [gameState])
+
+  const loadLeaderboard = useCallback(async (gameMode?: GameMode) => {
+    setIsLoading(true)
+    try {
+      const response = await gameApi.getLeaderboard(gameMode)
+      const frontendLeaderboard = convertApiLeaderboard(response.leaderboard)
+      setLeaderboard(frontendLeaderboard)
+    } catch (err) {
+      const apiError = handleApiError(err)
+      setError(apiError.error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
   const playSound = useCallback((sound: 'move' | 'capture' | 'takeme') => {
     if (isMuted) return
     // Sound effects would be played here
     // Using Web Audio API or audio elements
   }, [isMuted])
-  
-  const checkGameEnd = useCallback((newBoard: (typeof gameState)['board'], newPieceCount: { white: number; black: number }) => {
-    if (!gameState) return null
-    
-    // Check win condition (player with 0 pieces wins!)
-    const winner = checkWinCondition(newPieceCount)
-    if (winner) {
-      const winningPlayer = gameState.players.find(p => p.color === winner)!
-      return { status: 'win' as const, winner: winningPlayer }
-    }
-    
-    // Check for stalemate
-    const nextTurn = gameState.currentTurn === 'white' ? 'black' : 'white'
-    if (checkStalemate(newBoard, nextTurn)) {
-      return { status: 'draw' as const, winner: null }
-    }
-    
-    return null
-  }, [gameState])
-  
-  const executeBotMove = useCallback((state: GameState) => {
-    if (!state || state.status !== 'active') return
-    
-    const botPlayer = state.players.find(p => p.isBot)
-    if (!botPlayer || state.currentTurn !== botPlayer.color) return
-    
-    // Add a small delay for better UX
-    setTimeout(() => {
-      const botResult = getBotMove(
-        state.board, 
-        botPlayer.color,
-        state.takeMeState.mustCapture,
-        state.takeMeState.capturablePieces
-      )
-      
-      if (!botResult) {
-        // Bot has no moves, switch turn to human
-        setGameState({
-          ...state,
-          currentTurn: botPlayer.color === 'white' ? 'black' : 'white',
-          pendingMove: null
-        })
-        return
-      }
-      
-      const { move, declareTakeMe: shouldDeclareTakeMe } = botResult
-      
-      let newBoard = makeMove(state.board, move)
-      const newPieceCount = countPieces(newBoard)
-      
-      playSound(move.capturedPiece ? 'capture' : 'move')
-      
-      const gameEnd = checkGameEnd(newBoard, newPieceCount)
-      
-      let newTakeMeState = createInitialTakeMeState()
-      
-      // Bot declares Take Me! after the move
-      if (shouldDeclareTakeMe && !gameEnd) {
-        playSound('takeme')
-        const enemyColor = botPlayer.color === 'white' ? 'black' : 'white'
-        const capturablePieces = getCapturablePiecesAfterTakeMe(newBoard, enemyColor)
-        
-        if (capturablePieces.length > 0) {
-          newTakeMeState = {
-            declared: true,
-            declarer: botPlayer.color,
-            exposedPieces: findExposedPieces(newBoard, botPlayer.color),
-            capturablePieces,
-            mustCapture: true
-          }
-        }
-      }
-      
-      setGameState({
-        ...state,
-        board: newBoard,
-        currentTurn: botPlayer.color === 'white' ? 'black' : 'white',
-        selectedPiece: null,
-        legalMoves: [],
-        takeMeState: newTakeMeState,
-        moveHistory: [...state.moveHistory, move],
-        pieceCount: newPieceCount,
-        status: gameEnd?.status || 'active',
-        winner: gameEnd?.winner || null,
-        pendingMove: null
-      })
-    }, 800)
-  }, [playSound, checkGameEnd])
-  
-  const movePiece = useCallback((to: Square) => {
-    if (!gameState || !gameState.selectedPiece) return
-    
-    const isLegalMove = gameState.legalMoves.some(
-      m => m.row === to.row && m.col === to.col
-    )
-    if (!isLegalMove) return
-    
-    const piece = gameState.board[gameState.selectedPiece.row][gameState.selectedPiece.col]!
-    const capturedPiece = gameState.board[to.row][to.col]
-    
-    const move: Move = {
-      from: gameState.selectedPiece,
-      to,
-      piece,
-      capturedPiece: capturedPiece || undefined,
-      isPromotion: shouldPromote(piece, to.row),
-      promotionPiece: shouldPromote(piece, to.row) ? 'queen' : undefined
-    }
-    
-    let newBoard = makeMove(gameState.board, move)
-    const newPieceCount = countPieces(newBoard)
-    
-    playSound(capturedPiece ? 'capture' : 'move')
-    
-    const gameEnd = checkGameEnd(newBoard, newPieceCount)
-    
-    const nextTurn = gameState.currentTurn === 'white' ? 'black' : 'white'
-    
-    const newState: GameState = {
-      ...gameState,
-      board: newBoard,
-      currentTurn: nextTurn,
-      selectedPiece: null,
-      legalMoves: [],
-      takeMeState: createInitialTakeMeState(),
-      moveHistory: [...gameState.moveHistory, move],
-      pieceCount: newPieceCount,
-      status: gameEnd?.status || 'active',
-      winner: gameEnd?.winner || null,
-      pendingMove: null
-    }
-    
-    setGameState(newState)
-    
-    // Trigger bot move if it's bot's turn
-    if (!gameEnd && newState.players.some(p => p.isBot && p.color === nextTurn)) {
-      executeBotMove(newState)
-    }
-  }, [gameState, playSound, checkGameEnd, executeBotMove])
-  
-  const declareTakeMe = useCallback(() => {
-    if (!gameState || gameState.status !== 'active') return
-    if (!gameState.selectedPiece) return
-    
-    // Find exposed pieces after the potential move
-    const exposedPieces = findExposedPieces(gameState.board, gameState.currentTurn)
-    
-    setGameState(prev => prev ? {
-      ...prev,
-      takeMeState: {
-        ...prev.takeMeState,
-        declared: true,
-        declarer: prev.currentTurn,
-        exposedPieces
-      }
-    } : null)
-    
-    playSound('takeme')
-  }, [gameState, playSound])
-  
-  const cancelTakeMe = useCallback(() => {
-    setGameState(prev => prev ? {
-      ...prev,
-      takeMeState: createInitialTakeMeState()
-    } : null)
-  }, [])
-  
-  const confirmTakeMe = useCallback(() => {
-    if (!gameState || !gameState.selectedPiece) return
-    
-    // Execute the move and set up forced capture for opponent
-    const to = gameState.legalMoves[0] // Must have selected a move
-    if (!to) return
-    
-    const piece = gameState.board[gameState.selectedPiece.row][gameState.selectedPiece.col]!
-    const capturedPiece = gameState.board[to.row][to.col]
-    
-    const move: Move = {
-      from: gameState.selectedPiece,
-      to,
-      piece,
-      capturedPiece: capturedPiece || undefined,
-      isPromotion: shouldPromote(piece, to.row),
-      promotionPiece: shouldPromote(piece, to.row) ? 'queen' : undefined
-    }
-    
-    const newBoard = makeMove(gameState.board, move)
-    const newPieceCount = countPieces(newBoard)
-    
-    playSound('move')
-    
-    const gameEnd = checkGameEnd(newBoard, newPieceCount)
-    
-    const nextTurn = gameState.currentTurn === 'white' ? 'black' : 'white'
-    const capturablePieces = getCapturablePiecesAfterTakeMe(newBoard, nextTurn)
-    
-    const newState: GameState = {
-      ...gameState,
-      board: newBoard,
-      currentTurn: nextTurn,
-      selectedPiece: null,
-      legalMoves: [],
-      takeMeState: {
-        declared: true,
-        declarer: gameState.currentTurn,
-        exposedPieces: findExposedPieces(newBoard, gameState.currentTurn),
-        capturablePieces,
-        mustCapture: capturablePieces.length > 0
-      },
-      moveHistory: [...gameState.moveHistory, move],
-      pieceCount: newPieceCount,
-      status: gameEnd?.status || 'active',
-      winner: gameEnd?.winner || null
-    }
-    
-    setGameState(newState)
-    
-    // Trigger bot move if it's bot's turn
-    if (!gameEnd && newState.players.some(p => p.isBot && p.color === nextTurn)) {
-      executeBotMove(newState)
-    }
-  }, [gameState, playSound, checkGameEnd, executeBotMove])
-  
-  const declareMove = useCallback(() => {
-    if (!gameState || !gameState.pendingMove) return
-    
-    const { from, to } = gameState.pendingMove
-    const piece = gameState.board[from.row][from.col]!
-    const capturedPiece = gameState.board[to.row][to.col]
-    
-    const move: Move = {
-      from,
-      to,
-      piece,
-      capturedPiece: capturedPiece || undefined,
-      isPromotion: shouldPromote(piece, to.row),
-      promotionPiece: shouldPromote(piece, to.row) ? 'queen' : undefined
-    }
-    
-    const newBoard = makeMove(gameState.board, move)
-    const newPieceCount = countPieces(newBoard)
-    
-    playSound('move')
-    
-    const gameEnd = checkGameEnd(newBoard, newPieceCount)
-    
-    const nextTurn = gameState.currentTurn === 'white' ? 'black' : 'white'
-    const capturablePieces = getCapturablePiecesAfterTakeMe(newBoard, nextTurn)
-    
-    const newState: GameState = {
-      ...gameState,
-      board: newBoard,
-      currentTurn: nextTurn,
-      selectedPiece: null,
-      legalMoves: [],
-      takeMeState: {
-        declared: true,
-        declarer: gameState.currentTurn,
-        exposedPieces: findExposedPieces(newBoard, gameState.currentTurn),
-        capturablePieces,
-        mustCapture: capturablePieces.length > 0
-      },
-      moveHistory: [...gameState.moveHistory, move],
-      pieceCount: newPieceCount,
-      status: gameEnd?.status || 'active',
-      winner: gameEnd?.winner || null,
-      pendingMove: null
-    }
-    
-    setGameState(newState)
-    
-    // Trigger bot move if it's bot's turn
-    if (!gameEnd && newState.players.some(p => p.isBot && p.color === nextTurn)) {
-      executeBotMove(newState)
-    }
-  }, [gameState, playSound, checkGameEnd, executeBotMove])
-  
-  const setPendingMove = useCallback((move: { from: Square; to: Square } | null) => {
-    setGameState(prev => prev ? { ...prev, pendingMove: move } : null)
-  }, [])
-  
-  const resetGame = useCallback(() => {
-    // Update leaderboard with game result
-    if (gameState && gameState.status !== 'active') {
-      const humanPlayer = gameState.players.find(p => !p.isBot)
-      if (humanPlayer) {
-        setLeaderboard(prev => {
-          const existing = prev.find(e => e.playerName === humanPlayer.name)
-          if (existing) {
-            return prev.map(e => {
-              if (e.playerName === humanPlayer.name) {
-                return {
-                  ...e,
-                  wins: e.wins + (gameState.winner?.name === humanPlayer.name ? 1 : 0),
-                  losses: e.losses + (gameState.winner && gameState.winner.name !== humanPlayer.name ? 1 : 0),
-                  draws: e.draws + (gameState.status === 'draw' ? 1 : 0)
-                }
-              }
-              return e
-            })
-          } else {
-            return [...prev, {
-              playerName: humanPlayer.name,
-              wins: gameState.winner?.name === humanPlayer.name ? 1 : 0,
-              losses: gameState.winner && gameState.winner.name !== humanPlayer.name ? 1 : 0,
-              draws: gameState.status === 'draw' ? 1 : 0,
-              gameMode: gameMode || '1P'
-            }]
-          }
-        })
-      }
-    }
-    
-    setGameState(null)
-    setCurrentScreen('menu')
-    setGameModeState(null)
-    setPlayers([
-      { name: '', color: 'white', isBot: false },
-      { name: '', color: 'black', isBot: false }
-    ])
-  }, [gameState, gameMode])
-  
+
   const toggleMute = useCallback(() => {
     setIsMuted(prev => !prev)
   }, [])
-  
+
+  const value: GameContextType = {
+    currentScreen,
+    setCurrentScreen,
+    gameMode,
+    setGameMode,
+    players,
+    setPlayerName,
+    gameState,
+    isLoading,
+    error,
+    startGame,
+    selectPiece,
+    movePiece,
+    declareTakeMe,
+    cancelTakeMe,
+    confirmTakeMe,
+    declareMove,
+    setPendingMove,
+    resetGame,
+    endGame,
+    leaderboard,
+    loadLeaderboard,
+    isMuted,
+    toggleMute,
+    playSound
+  }
+
   return (
-    <GameContext.Provider value={{
-      currentScreen,
-      setCurrentScreen,
-      gameMode,
-      setGameMode,
-      players,
-      setPlayerName,
-      gameState,
-      startGame,
-      selectPiece,
-      movePiece,
-      declareTakeMe,
-      cancelTakeMe,
-      confirmTakeMe,
-      declareMove,
-      setPendingMove,
-      resetGame,
-      leaderboard,
-      isMuted,
-      toggleMute,
-      playSound
-    }}>
+    <GameContext.Provider value={value}>
       {children}
     </GameContext.Provider>
   )

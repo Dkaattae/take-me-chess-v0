@@ -3,11 +3,16 @@
 import { useGame } from '@/lib/chess/game-context'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ArrowLeft, Trophy, Medal, Award, User, Bot } from 'lucide-react'
+import { ArrowLeft, Trophy, Medal, Award, User, Bot, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useEffect } from 'react'
 
 export function LeaderboardScreen() {
-  const { leaderboard, setCurrentScreen } = useGame()
+  const { leaderboard, setCurrentScreen, loadLeaderboard, isLoading, error } = useGame()
+
+  useEffect(() => {
+    loadLeaderboard()
+  }, [loadLeaderboard])
   
   // Sort by wins descending
   const sortedLeaderboard = [...leaderboard].sort((a, b) => {
@@ -53,7 +58,25 @@ export function LeaderboardScreen() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {sortedLeaderboard.length === 0 ? (
+            {isLoading ? (
+              <div className="text-center py-8">
+                <Loader2 className="w-8 h-8 mx-auto mb-4 animate-spin text-primary" />
+                <p className="text-muted-foreground">Loading leaderboard...</p>
+              </div>
+            ) : error ? (
+              <div className="text-center py-8 text-destructive">
+                <p className="mb-2">Failed to load leaderboard</p>
+                <p className="text-sm text-muted-foreground">{error}</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-4"
+                  onClick={() => loadLeaderboard()}
+                >
+                  Try Again
+                </Button>
+              </div>
+            ) : sortedLeaderboard.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <User className="w-12 h-12 mx-auto mb-4 opacity-50" />
                 <p>No players yet!</p>
@@ -61,7 +84,7 @@ export function LeaderboardScreen() {
               </div>
             ) : (
               sortedLeaderboard.map((entry, index) => (
-                <div 
+                <div
                   key={entry.playerName}
                   className={cn(
                     "flex items-center gap-4 p-4 rounded-xl border-2 transition-all",
@@ -72,7 +95,7 @@ export function LeaderboardScreen() {
                   <div className="flex-shrink-0">
                     {getRankIcon(index)}
                   </div>
-                  
+
                   {/* Player info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -81,8 +104,8 @@ export function LeaderboardScreen() {
                       </span>
                       <span className={cn(
                         "text-xs px-2 py-0.5 rounded-full font-medium",
-                        entry.gameMode === '1P' 
-                          ? "bg-accent/20 text-accent-foreground" 
+                        entry.gameMode === '1P'
+                          ? "bg-accent/20 text-accent-foreground"
                           : "bg-primary/20 text-primary"
                       )}>
                         {entry.gameMode === '1P' ? (
@@ -97,7 +120,7 @@ export function LeaderboardScreen() {
                       </span>
                     </div>
                   </div>
-                  
+
                   {/* Stats */}
                   <div className="flex items-center gap-4 text-sm">
                     <div className="text-center">
@@ -118,12 +141,12 @@ export function LeaderboardScreen() {
             )}
           </CardContent>
         </Card>
-        
+
         {/* Info card */}
         <Card className="mt-4 bg-muted/50 border-dashed">
           <CardContent className="pt-4 pb-4">
             <p className="text-center text-sm text-muted-foreground">
-              Play games to climb the leaderboard! Your stats are saved locally.
+              Play games to climb the leaderboard! Your stats are saved on the server.
             </p>
           </CardContent>
         </Card>

@@ -4,7 +4,7 @@ import { useGame } from '@/lib/chess/game-context'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { ArrowLeft, Crown, Bot, User, Sparkles } from 'lucide-react'
+import { ArrowLeft, Crown, Bot, User, Sparkles, Loader2 } from 'lucide-react'
 
 export function SetupScreen() {
   const { 
@@ -12,7 +12,9 @@ export function SetupScreen() {
     players, 
     setPlayerName, 
     startGame, 
-    setCurrentScreen 
+    setCurrentScreen,
+    isLoading,
+    error
   } = useGame()
   
   const isValid = players.every((p, i) => {
@@ -121,13 +123,28 @@ export function SetupScreen() {
         
         <Button 
           onClick={startGame}
-          disabled={!isValid}
+          disabled={!isValid || isLoading}
           className="w-full h-14 text-lg font-semibold"
           size="lg"
         >
-          <Sparkles className="w-5 h-5 mr-2" />
-          Start Game!
+          {isLoading ? (
+            <>
+              <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+              Creating Game...
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-5 h-5 mr-2" />
+              Start Game!
+            </>
+          )}
         </Button>
+        
+        {error && (
+          <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+            <p className="text-sm text-destructive text-center">{error}</p>
+          </div>
+        )}
         
         <p className="text-center text-sm text-muted-foreground">
           Remember: In Take-Me Chess, you win by losing all your pieces!
