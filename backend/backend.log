@@ -1,0 +1,12 @@
+nohup: ignoring input
+INFO:     Started server process [15005]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:60468 - "POST /games HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50698 - "OPTIONS /games HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50698 - "POST /games HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59096 - "POST /games HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42620 - "GET / HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:42620 - "GET /docs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42620 - "GET /openapi.json HTTP/1.1" 200 OK

@@ -117,7 +117,7 @@ class MakeMoveRequest(BaseModel):
     to: Square
     promotion_piece: Optional[PieceType] = None
 
-    model_config = ConfigDict(allow_population_by_field_name=True)
+    model_config = ConfigDict(validate_by_name=True)
 
 
 class DeclareTakeMeRequest(BaseModel):
@@ -125,7 +125,7 @@ class DeclareTakeMeRequest(BaseModel):
     to: Square
     promotion_piece: Optional[PieceType] = None
 
-    model_config = ConfigDict(allow_population_by_field_name=True)
+    model_config = ConfigDict(validate_by_name=True)
 
 
 class BotMoveResponse(BaseModel):
