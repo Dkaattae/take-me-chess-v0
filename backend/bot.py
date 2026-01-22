@@ -90,10 +90,11 @@ def get_bot_move(
 
     # Simulate the move
     new_board = execute_move(board, move)
-    exposed_pieces = find_exposed_pieces(new_board, color)
-    capturable_after = get_capturable_pieces_after_take_me(new_board, color)
+    # Bot declares if the OPPONENT can capture its pieces after the move
+    opponent_color = PieceColor.BLACK if color == PieceColor.WHITE else PieceColor.WHITE
+    capturable_by_opponent = get_capturable_pieces_after_take_me(new_board, opponent_color)
 
-    # Declare if there are pieces that can be captured
-    declare_take_me = len(capturable_after) > 0
+    # Declare if there are pieces that the opponent MUST capture
+    declare_take_me = len(capturable_by_opponent) > 0
 
     return BotMoveResponse(move=move, declare_take_me=declare_take_me)

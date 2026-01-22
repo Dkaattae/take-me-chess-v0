@@ -13,6 +13,16 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Piece values for scoring
+PIECE_VALUES = {
+    PieceType.KING: 0,
+    PieceType.QUEEN: 9,
+    PieceType.ROOK: 5,
+    PieceType.BISHOP: 3,
+    PieceType.KNIGHT: 3,
+    PieceType.PAWN: 1
+}
+
 def update_leaderboard_on_game_over(game_state: GameState):
     """Update leaderboard entries for all human players when game ends"""
     if game_state.status not in [GameStatus.WIN, GameStatus.DRAW]:
@@ -176,6 +186,15 @@ async def make_move(game_id: str, request: MakeMoveRequest):
         "updated_at": datetime.now()
     })
 
+    # Update score if there was a capture
+    if captured_piece:
+        points = PIECE_VALUES.get(captured_piece.type, 0)
+        # Award points to the player whose piece was captured
+        for player in updated_game.players:
+            if player.color == captured_piece.color:
+                player.score += points
+                break
+
     db.update_game(updated_game)
     
     if game_over:
@@ -305,6 +324,15 @@ async def declare_take_me(game_id: str, request: DeclareTakeMeRequest):
         "updated_at": datetime.now()
     })
 
+    # Update score if there was a capture
+    if captured_piece:
+        points = PIECE_VALUES.get(captured_piece.type, 0)
+        # Award points to the player whose piece was captured
+        for player in updated_game.players:
+            if player.color == captured_piece.color:
+                player.score += points
+                break
+
     db.update_game(updated_game)
     
     if game_over:
@@ -398,6 +426,25 @@ async def get_bot_move_endpoint(game_id: str):
         "winner": game_over[1] if game_over else None,
         "updated_at": datetime.now()
     })
+
+    # Update score if there was a capture
+    if bot_result.move.captured_piece:
+        points = PIECE_VALUES.get(bot_result.move.captured_piece.type, 0)
+        # Award points to the player whose piece was captured
+        for player in updated_game.players:
+            if player.color == bot_result.move.captured_piece.color:
+                player.score += points
+                break
+
+    # Penalty check for bot's "Take Me!" declaration
+    if take_me_state.declared and not take_me_state.must_capture:
+        take_me_state.declared = False
+        updated_game.message = "take who??"
+        for player in updated_game.players:
+            if player.color == game_state.current_turn:
+                player.score -= 5
+                break
+        updated_game.take_me_state = take_me_state
 
     db.update_game(updated_game)
 
