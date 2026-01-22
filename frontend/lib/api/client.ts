@@ -1,16 +1,46 @@
-import axios from 'axios'
+// lib/api/client.ts
+// Version: 5.0 (Internal Proxy + Snake Case API Types)
 
-// API Configuration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const API_BASE_URL = '/api';
 
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
+if (typeof window !== 'undefined') {
+  console.log('API Client (v5.0) initialized. Using internal proxy: /api -> http://localhost:8000');
+}
+
+// Helper for fetch calls
+async function fetchApi(path: string, options: RequestInit = {}) {
+  const url = `${API_BASE_URL}${path}`;
+  const headers = {
     'Content-Type': 'application/json',
-  },
-})
+    ...options.headers,
+  };
 
-// Types based on OpenAPI spec
+  if (typeof window !== 'undefined') {
+    console.log(`API Request: ${options.method || 'GET'} ${url}`);
+  }
+
+  try {
+    const response = await fetch(url, { ...options, headers });
+
+    if (typeof window !== 'undefined') {
+      console.log(`API Response: ${response.status} ${url}`);
+    }
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw { response: { status: response.status, data: errorData }, message: `HTTP ${response.status}` };
+    }
+
+    return await response.json();
+  } catch (error: any) {
+    if (typeof window !== 'undefined') {
+      console.error('API Error:', error.message || error);
+    }
+    throw error;
+  }
+}
+
+// Types based on OpenAPI spec (MATCHING BACKEND SNAKE_CASE)
 export interface ApiPiece {
   type: 'king' | 'queen' | 'rook' | 'bishop' | 'knight' | 'pawn'
   color: 'white' | 'black'
@@ -25,9 +55,9 @@ export interface ApiMove {
   from: ApiSquare
   to: ApiSquare
   piece: ApiPiece
-  capturedPiece?: ApiPiece
-  isPromotion?: boolean
-  promotionPiece?: 'king' | 'queen' | 'rook' | 'bishop' | 'knight' | 'pawn'
+  captured_piece?: ApiPiece
+  is_promotion?: boolean
+  promotion_piece?: 'king' | 'queen' | 'rook' | 'bishop' | 'knight' | 'pawn'
 }
 
 export type ApiBoardState = (ApiPiece | null)[][]
@@ -36,8 +66,9 @@ export interface ApiPlayer {
   id: string
   name: string
   color: 'white' | 'black'
-  isBot: boolean
+  is_bot: boolean
   avatar?: string
+  score: number
 }
 
 export type ApiGameStatus = 'setup' | 'active' | 'win' | 'draw'
@@ -46,34 +77,36 @@ export type ApiGameMode = '1P' | '2P'
 export interface ApiTakeMeState {
   declared: boolean
   declarer?: 'white' | 'black'
-  exposedPieces: ApiSquare[]
-  capturablePieces: ApiSquare[]
-  mustCapture: boolean
+  exposed_pieces: ApiSquare[]
+  capturable_pieces: ApiSquare[]
+  must_capture: boolean
 }
 
 export interface ApiGameState {
   id: string
   board: ApiBoardState
-  currentTurn: 'white' | 'black'
+  current_turn: 'white' | 'black'
   players: ApiPlayer[]
   status: ApiGameStatus
   winner?: ApiPlayer
-  selectedPiece?: ApiSquare
-  legalMoves?: ApiSquare[]
-  takeMeState: ApiTakeMeState
-  moveHistory: ApiMove[]
-  pieceCount: { white: number; black: number }
-  createdAt: string
-  updatedAt: string
+  selected_piece?: ApiSquare
+  legal_moves?: ApiSquare[]
+  take_me_state: ApiTakeMeState
+  move_history: ApiMove[]
+  piece_count: { white: number; black: number }
+  message?: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface ApiLeaderboardEntry {
-  playerName: string
+  player_name: string
   wins: number
   losses: number
   draws: number
-  gameMode: ApiGameMode
-  lastPlayed: string
+  score: number
+  game_mode: ApiGameMode
+  last_played: string
 }
 
 export interface CreateGameRequest {
@@ -87,23 +120,23 @@ export interface CreateGameRequest {
 export interface MakeMoveRequest {
   from: ApiSquare
   to: ApiSquare
-  promotionPiece?: 'king' | 'queen' | 'rook' | 'bishop' | 'knight' | 'pawn'
+  promotion_piece?: 'king' | 'queen' | 'rook' | 'bishop' | 'knight' | 'pawn'
 }
 
 export interface DeclareTakeMeRequest {
   from: ApiSquare
   to: ApiSquare
-  promotionPiece?: 'king' | 'queen' | 'rook' | 'bishop' | 'knight' | 'pawn'
+  promotion_piece?: 'king' | 'queen' | 'rook' | 'bishop' | 'knight' | 'pawn'
 }
 
 export interface BotMoveResponse {
   move: ApiMove
-  declareTakeMe: boolean
+  declare_take_me: boolean
 }
 
 export interface ValidationResponse {
   valid: boolean
-  legalMoves?: ApiSquare[]
+  legal_moves?: ApiSquare[]
   error?: string
 }
 
@@ -115,90 +148,50 @@ export interface ErrorResponse {
 
 // API Client Functions
 export const gameApi = {
-  // Create a new game
-  createGame: async (request: CreateGameRequest): Promise<ApiGameState> => {
-    const response = await api.post('/games', request)
-    return response.data
+  createGame: (request: CreateGameRequest): Promise<ApiGameState> =>
+    fetchApi('/games', { method: 'POST', body: JSON.stringify(request) }),
+
+  getGame: (gameId: string): Promise<ApiGameState> =>
+    fetchApi(`/games/${gameId}`),
+
+  makeMove: (gameId: string, request: MakeMoveRequest): Promise<ApiGameState> =>
+    fetchApi(`/games/${gameId}/moves`, { method: 'POST', body: JSON.stringify(request) }),
+
+  validateMove: (gameId: string, request: MakeMoveRequest): Promise<ValidationResponse> =>
+    fetchApi(`/games/${gameId}/moves/validate`, { method: 'POST', body: JSON.stringify(request) }),
+
+  declareTakeMe: (gameId: string, request: DeclareTakeMeRequest): Promise<ApiGameState> =>
+    fetchApi(`/games/${gameId}/take-me`, { method: 'POST', body: JSON.stringify(request) }),
+
+  getBotMove: (gameId: string): Promise<{ gameState: ApiGameState; botMove: BotMoveResponse }> =>
+    fetchApi(`/games/${gameId}/bot-move`, { method: 'POST' }),
+
+  getLegalMoves: (gameId: string, row: number, col: number): Promise<{ legal_moves: ApiSquare[] }> =>
+    fetchApi(`/games/${gameId}/legal-moves?row=${row}&col=${col}`),
+
+  endGame: (gameId: string): Promise<{ message: string; finalState: ApiGameState }> =>
+    fetchApi(`/games/${gameId}`, { method: 'DELETE' }),
+
+  getLeaderboard: (gameMode?: ApiGameMode, limit = 10): Promise<{ leaderboard: ApiLeaderboardEntry[] }> => {
+    const params = new URLSearchParams({ limit: limit.toString() });
+    if (gameMode) params.append('game_mode', gameMode);
+    return fetchApi(`/leaderboard?${params.toString()}`);
   },
 
-  // Get game state
-  getGame: async (gameId: string): Promise<ApiGameState> => {
-    const response = await api.get(`/games/${gameId}`)
-    return response.data
-  },
+  submitGameResult: (request: any): Promise<any> =>
+    fetchApi('/leaderboard', { method: 'POST', body: JSON.stringify(request) }),
 
-  // Make a move
-  makeMove: async (gameId: string, request: MakeMoveRequest): Promise<ApiGameState> => {
-    const response = await api.post(`/games/${gameId}/moves`, request)
-    return response.data
-  },
+  healthCheck: (): Promise<{ status: string; timestamp: string }> =>
+    fetchApi('/health')
+};
 
-  // Validate a move
-  validateMove: async (gameId: string, request: MakeMoveRequest): Promise<ValidationResponse> => {
-    const response = await api.post(`/games/${gameId}/moves/validate`, request)
-    return response.data
-  },
-
-  // Declare Take Me!
-  declareTakeMe: async (gameId: string, request: DeclareTakeMeRequest): Promise<ApiGameState> => {
-    const response = await api.post(`/games/${gameId}/take-me`, request)
-    return response.data
-  },
-
-  // Get bot move
-  getBotMove: async (gameId: string): Promise<{ gameState: ApiGameState; botMove: BotMoveResponse }> => {
-    const response = await api.post(`/games/${gameId}/bot-move`)
-    return response.data
-  },
-
-  // Get legal moves for a piece
-  getLegalMoves: async (gameId: string, row: number, col: number): Promise<{ legalMoves: ApiSquare[] }> => {
-    const response = await api.get(`/games/${gameId}/legal-moves`, {
-      params: { row, col }
-    })
-    return response.data
-  },
-
-  // End game
-  endGame: async (gameId: string): Promise<{ message: string; finalState: ApiGameState }> => {
-    const response = await api.delete(`/games/${gameId}`)
-    return response.data
-  },
-
-  // Get leaderboard
-  getLeaderboard: async (gameMode?: ApiGameMode, limit = 10): Promise<{ leaderboard: ApiLeaderboardEntry[] }> => {
-    const response = await api.get('/leaderboard', {
-      params: { game_mode: gameMode, limit }
-    })
-    return response.data
-  },
-
-  // Submit game result
-  submitGameResult: async (request: {
-    game_id: string
-    winner: { name: string; is_bot: boolean }
-    game_mode: ApiGameMode
-    duration: number
-  }): Promise<{ message: string; updatedLeaderboard: ApiLeaderboardEntry[] }> => {
-    const response = await api.post('/leaderboard', request)
-    return response.data
-  },
-
-  // Health check
-  healthCheck: async (): Promise<{ status: string; timestamp: string }> => {
-    const response = await api.get('/health')
-    return response.data
-  }
-}
-
-// Error handling
 export const handleApiError = (error: any): ErrorResponse => {
   if (error.response?.data) {
-    return error.response.data
+    return error.response.data;
   }
   return {
     error: 'Network error',
     code: 'NETWORK_ERROR',
-    details: error.message
-  }
-}
+    details: error.message || 'Unknown error'
+  };
+};

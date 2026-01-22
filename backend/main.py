@@ -1,10 +1,10 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime
 from models import *
 from database import db
-from game_logic import get_legal_moves, execute_move, should_promote, check_win_condition, count_pieces, get_capture_moves, find_exposed_pieces, get_capturable_pieces_after_take_me
+from game_logic import get_legal_moves, execute_move, should_promote, check_game_over, count_pieces, get_capture_moves, find_exposed_pieces, get_capturable_pieces_after_take_me, get_board_hash
 from bot import get_bot_move
 
 app = FastAPI(
@@ -13,14 +13,57 @@ app = FastAPI(
     version="1.0.0"
 )
 
+def update_leaderboard_on_game_over(game_state: GameState):
+    """Update leaderboard entries for all human players when game ends"""
+    if game_state.status not in [GameStatus.WIN, GameStatus.DRAW]:
+        return
+
+    # Map game mode
+    game_mode = GameMode.SINGLE_PLAYER if any(p.is_bot for p in game_state.players) else GameMode.TWO_PLAYER
+
+    for player in game_state.players:
+        if player.is_bot:
+            continue
+            
+        wins = 0
+        losses = 0
+        draws = 0
+        
+        if game_state.status == GameStatus.DRAW:
+            draws = 1
+        elif game_state.winner and game_state.winner.id == player.id:
+            wins = 1
+        else:
+            losses = 1
+            
+        entry = LeaderboardEntry(
+            player_name=player.name,
+            wins=wins,
+            losses=losses,
+            draws=draws,
+            score=player.score,
+            game_mode=game_mode,
+            last_played=datetime.now()
+        )
+        db.add_leaderboard_entry(entry)
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://10.0.13.170:3000", "http://127.0.0.1:3000"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/")
+async def root():
+    """Root endpoint for debugging"""
+    return {
+        "message": "Take-Me Chess API is running",
+        "endpoints": ["/health", "/games", "/leaderboard"]
+    }
 
 
 @app.post("/games", response_model=GameState)
@@ -102,29 +145,48 @@ async def make_move(game_id: str, request: MakeMoveRequest):
     new_board = execute_move(game_state.board, move)
     new_piece_count = count_pieces(new_board)
 
-    # Check win condition
-    win_condition = check_win_condition(new_board, new_piece_count)
-
     # Update game state
     next_turn = PieceColor.BLACK if game_state.current_turn == PieceColor.WHITE else PieceColor.WHITE
+    
+    # New state after the move
+    new_take_me_state = TakeMeState(declared=False, exposed_pieces=[], capturable_pieces=[], must_capture=False)
+    new_position_hash = get_board_hash(new_board, next_turn, new_take_me_state.must_capture)
+    new_position_history = game_state.position_history + [new_position_hash]
 
+    # Check game over with NEW state
+    game_over = check_game_over(game_state.copy(update={
+        "board": new_board, 
+        "current_turn": next_turn, 
+        "take_me_state": new_take_me_state,
+        "position_history": new_position_history
+    }))
+    
     updated_game = game_state.copy(update={
         "board": new_board,
         "current_turn": next_turn,
         "selected_piece": None,
         "legal_moves": [],
+        "message": None,
         "move_history": game_state.move_history + [move],
+        "position_history": new_position_history,
+        "take_me_state": new_take_me_state,
         "piece_count": new_piece_count,
-        "status": win_condition[0] if win_condition else GameStatus.ACTIVE,
-        "winner": win_condition[1] if win_condition else None,
+        "status": game_over[0] if game_over else GameStatus.ACTIVE,
+        "winner": game_over[1] if game_over else None,
         "updated_at": datetime.now()
     })
 
     db.update_game(updated_game)
-
+    
+    if game_over:
+        update_leaderboard_on_game_over(updated_game)
+    
     # If next player is bot, make bot move
-    if not win_condition and any(p.is_bot and p.color == next_turn for p in updated_game.players):
+    if not game_over and any(p.is_bot and p.color == next_turn for p in updated_game.players):
         await get_bot_move_endpoint(game_id)
+        # Fetch the latest state after bot move
+        final_game_state = db.get_game(game_id)
+        return final_game_state if final_game_state else updated_game
 
     return updated_game
 
@@ -198,25 +260,63 @@ async def declare_take_me(game_id: str, request: DeclareTakeMeRequest):
 
     # Update game state
     next_turn = PieceColor.BLACK if game_state.current_turn == PieceColor.WHITE else PieceColor.WHITE
+    
+    new_take_me_state = TakeMeState(
+        declared=True,
+        declarer=game_state.current_turn,
+        exposed_pieces=exposed_pieces,
+        capturable_pieces=capturable_pieces,
+        must_capture=len(capturable_pieces) > 0
+    )
+
+    # CHECK FOR PENALTY: "Take Me!" but no captures possible
+    message = None
+    if len(capturable_pieces) == 0:
+        new_take_me_state.declared = False # Reset declaration
+        message = "take who??"
+        # Deduct 5 points from the current player
+        for p in game_state.players:
+            if p.color == game_state.current_turn:
+                p.score -= 5
+                break
+    new_position_hash = get_board_hash(new_board, next_turn, new_take_me_state.must_capture)
+    new_position_history = game_state.position_history + [new_position_hash]
+
+    # Check game over
+    game_over = check_game_over(game_state.copy(update={
+        "board": new_board, 
+        "current_turn": next_turn,
+        "take_me_state": new_take_me_state,
+        "position_history": new_position_history
+    }))
 
     updated_game = game_state.copy(update={
         "board": new_board,
         "current_turn": next_turn,
         "selected_piece": None,
         "legal_moves": [],
-        "take_me_state": TakeMeState(
-            declared=True,
-            declarer=game_state.current_turn,
-            exposed_pieces=exposed_pieces,
-            capturable_pieces=capturable_pieces,
-            must_capture=len(capturable_pieces) > 0
-        ),
+        "take_me_state": new_take_me_state,
+        "message": message,
         "move_history": game_state.move_history + [move],
+        "position_history": new_position_history,
         "piece_count": new_piece_count,
+        "status": game_over[0] if game_over else GameStatus.ACTIVE,
+        "winner": game_over[1] if game_over else None,
         "updated_at": datetime.now()
     })
 
     db.update_game(updated_game)
+    
+    if game_over:
+        update_leaderboard_on_game_over(updated_game)
+    
+    # If next player is bot, make bot move
+    if not game_over and any(p.is_bot and p.color == next_turn for p in updated_game.players):
+        await get_bot_move_endpoint(game_id)
+        # Fetch the latest state after bot move
+        final_game_state = db.get_game(game_id)
+        return final_game_state if final_game_state else updated_game
+
     return updated_game
 
 
@@ -273,9 +373,17 @@ async def get_bot_move_endpoint(game_id: str):
             must_capture=len(capturable_pieces) > 0
         )
 
-    # Check win condition
-    win_condition = check_win_condition(new_board, new_piece_count)
+    # Check game over after bot move
     next_turn = PieceColor.BLACK if game_state.current_turn == PieceColor.WHITE else PieceColor.WHITE
+    new_position_hash = get_board_hash(new_board, next_turn, take_me_state.must_capture)
+    new_position_history = game_state.position_history + [new_position_hash]
+
+    game_over = check_game_over(game_state.copy(update={
+        "board": new_board, 
+        "current_turn": next_turn, 
+        "take_me_state": take_me_state,
+        "position_history": new_position_history
+    }))
 
     updated_game = game_state.copy(update={
         "board": new_board,
@@ -284,13 +392,17 @@ async def get_bot_move_endpoint(game_id: str):
         "legal_moves": [],
         "take_me_state": take_me_state,
         "move_history": game_state.move_history + [bot_result.move],
+        "position_history": new_position_history,
         "piece_count": new_piece_count,
-        "status": win_condition[0] if win_condition else GameStatus.ACTIVE,
-        "winner": win_condition[1] if win_condition else None,
+        "status": game_over[0] if game_over else GameStatus.ACTIVE,
+        "winner": game_over[1] if game_over else None,
         "updated_at": datetime.now()
     })
 
     db.update_game(updated_game)
+
+    if game_over:
+        update_leaderboard_on_game_over(updated_game)
 
     return {
         "gameState": updated_game,

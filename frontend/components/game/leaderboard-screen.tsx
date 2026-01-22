@@ -13,34 +13,34 @@ export function LeaderboardScreen() {
   useEffect(() => {
     loadLeaderboard()
   }, [loadLeaderboard])
-  
+
   // Sort by wins descending
-  const sortedLeaderboard = [...leaderboard].sort((a, b) => {
-    const aScore = a.wins - a.losses
-    const bScore = b.wins - b.losses
+  const sortedLeaderboard = [...(leaderboard || [])].sort((a, b) => {
+    const aScore = (a.wins || 0) - (a.losses || 0)
+    const bScore = (b.wins || 0) - (b.losses || 0)
     return bScore - aScore
   })
-  
+
   const getRankIcon = (index: number) => {
     if (index === 0) return <Trophy className="w-6 h-6 text-yellow-500" />
     if (index === 1) return <Medal className="w-6 h-6 text-gray-400" />
     if (index === 2) return <Award className="w-6 h-6 text-amber-600" />
     return <span className="w-6 h-6 flex items-center justify-center text-muted-foreground font-bold">{index + 1}</span>
   }
-  
+
   const getRankBg = (index: number) => {
     if (index === 0) return "bg-yellow-500/10 border-yellow-500/30"
     if (index === 1) return "bg-gray-400/10 border-gray-400/30"
     if (index === 2) return "bg-amber-600/10 border-amber-600/30"
     return "bg-muted/30 border-transparent"
   }
-  
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Header */}
       <header className="flex items-center gap-4 p-4 border-b border-border">
-        <Button 
-          variant="ghost" 
+        <Button
+          variant="ghost"
           onClick={() => setCurrentScreen('menu')}
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
@@ -48,7 +48,7 @@ export function LeaderboardScreen() {
         </Button>
         <h1 className="text-xl font-bold text-foreground">Leaderboard</h1>
       </header>
-      
+
       <main className="flex-1 p-4 max-w-2xl mx-auto w-full">
         <Card>
           <CardHeader>

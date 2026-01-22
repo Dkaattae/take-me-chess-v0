@@ -1,7 +1,7 @@
 from typing import List, Optional, Dict, Tuple
 from models import (
     BoardState, Piece, PieceType, PieceColor, Square, Move,
-    TakeMeState, GameState, Player
+    TakeMeState, GameState, Player, GameStatus
 )
 
 
@@ -151,12 +151,66 @@ def should_promote(piece: Piece, target_row: int) -> bool:
            (piece.color == PieceColor.BLACK and target_row == 7)
 
 
-def check_win_condition(board: BoardState, piece_count: Dict[str, int]) -> Optional[Tuple[str, Player]]:
-    """Check if the game has a winner"""
+def get_board_hash(board: BoardState, current_turn: PieceColor, must_capture: bool) -> str:
+    """Generate a hashable string representaton of the board state"""
+    board_str = ""
+    for row in board:
+        for piece in row:
+            if piece:
+                board_str += f"{piece.type[0]}{piece.color[0]}"
+            else:
+                board_str += ".."
+        board_str += "|"
+    return f"{board_str}:{current_turn[0]}:{must_capture}"
+
+
+def check_game_over(game_state) -> Optional[Tuple[str, Optional[Player]]]:
+    """Check if the game is over and return (status, winner)"""
+    piece_count = count_pieces(game_state.board)
+    
+    # 1. Win by losing all pieces
     if piece_count["white"] == 0:
-        return ("win", Player(id="black_wins", name="Black", color=PieceColor.BLACK))
+        winner = next((p for p in game_state.players if p.color == PieceColor.WHITE), None)
+        return (GameStatus.WIN, winner)
     if piece_count["black"] == 0:
-        return ("win", Player(id="white_wins", name="White", color=PieceColor.WHITE))
+        winner = next((p for p in game_state.players if p.color == PieceColor.BLACK), None)
+        return (GameStatus.WIN, winner)
+        
+    # 2. Check stalemate (no legal moves for current player)
+    current_color = game_state.current_turn
+    has_moves = False
+    for row in range(8):
+        for col in range(8):
+            piece = game_state.board[row][col]
+            if piece and piece.color == current_color:
+                moves = get_legal_moves(game_state.board, Square(row=row, col=col))
+                
+                # Filter if must capture
+                if game_state.take_me_state.must_capture:
+                    moves = [m for m in moves if any(cp.row == m.row and cp.col == m.col 
+                                                   for cp in game_state.take_me_state.capturable_pieces)]
+                
+                if moves:
+                    has_moves = True
+                    break
+        if has_moves:
+            break
+            
+    if not has_moves:
+        # Stalemate - In Take-Me Chess, the player with no moves wins!
+        winner = next((p for p in game_state.players if p.color == current_color), None)
+        return (GameStatus.WIN, winner)
+        
+    # 3. Threefold Repetition
+    current_hash = get_board_hash(game_state.board, game_state.current_turn, game_state.take_me_state.must_capture)
+    count = 0
+    for h in game_state.position_history:
+        if h == current_hash:
+            count += 1
+    
+    if count >= 3:
+        return (GameStatus.DRAW, None)
+        
     return None
 
 

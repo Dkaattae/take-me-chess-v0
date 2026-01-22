@@ -6,47 +6,43 @@ import { cn } from '@/lib/utils'
 
 export function ChessBoard() {
   const { gameState, selectPiece, movePiece, setPendingMove } = useGame()
-  
+
   if (!gameState) return null
-  
-  const { board, selectedPiece, legalMoves, takeMeState, currentTurn, pendingMove } = gameState
-  
+
+  const { board, selectedPiece, legalMoves, takeMeState, currentTurn } = gameState
+
   const handleSquareClick = (row: number, col: number) => {
     const piece = board[row][col]
-    
+
     // Check if clicking on a legal move destination
-    const isLegalMove = legalMoves.some(m => m.row === row && m.col === col)
+    const isLegalMove = (legalMoves || []).some(m => m.row === row && m.col === col)
     if (isLegalMove && selectedPiece) {
-      if (takeMeState.mustCapture) {
-        movePiece({ row, col })
-      } else {
-        setPendingMove({ from: selectedPiece, to: { row, col } })
-      }
+      setPendingMove({ from: selectedPiece, to: { row, col } })
       return
     }
-    
+
     // Check if clicking on own piece to select it
     if (piece && piece.color === currentTurn) {
       selectPiece({ row, col })
     }
   }
-  
+
   const isSquareSelected = (row: number, col: number) => {
     return selectedPiece?.row === row && selectedPiece?.col === col
   }
-  
+
   const isLegalMoveSquare = (row: number, col: number) => {
-    return legalMoves.some(m => m.row === row && m.col === col)
+    return (legalMoves || []).some(m => m.row === row && m.col === col)
   }
-  
+
   const isCapturableSquare = (row: number, col: number) => {
-    return takeMeState.capturablePieces.some(p => p.row === row && p.col === col)
+    return (takeMeState?.capturablePieces || []).some(p => p.row === row && p.col === col)
   }
-  
+
   const isExposedSquare = (row: number, col: number) => {
-    return takeMeState.exposedPieces.some(p => p.row === row && p.col === col)
+    return (takeMeState?.exposedPieces || []).some(p => p.row === row && p.col === col)
   }
-  
+
   return (
     <div className="relative">
       {/* Board container with shadow and rounded corners */}
@@ -60,7 +56,7 @@ export function ChessBoard() {
               const isCapturable = isCapturableSquare(rowIndex, colIndex)
               const isExposed = isExposedSquare(rowIndex, colIndex)
               const hasPiece = piece !== null
-              
+
               return (
                 <button
                   key={`${rowIndex}-${colIndex}`}
@@ -73,7 +69,7 @@ export function ChessBoard() {
                     isLegal && !hasPiece && "after:absolute after:w-1/4 after:h-1/4 after:rounded-full after:bg-foreground/30",
                     isLegal && hasPiece && "ring-4 ring-inset ring-destructive",
                     isCapturable && "bg-square-danger animate-pulse",
-                    isExposed && takeMeState.declared && "ring-4 ring-inset ring-takeme-glow",
+                    isExposed && takeMeState?.declared && "ring-4 ring-inset ring-takeme-glow",
                     "hover:brightness-95 active:brightness-90"
                   )}
                   aria-label={`Square ${String.fromCharCode(97 + colIndex)}${8 - rowIndex}${piece ? ` with ${piece.color} ${piece.type}` : ''}`}
@@ -84,8 +80,8 @@ export function ChessBoard() {
                       isSelected && "scale-110",
                       isCapturable && "animate-bounce"
                     )}>
-                      <ChessPiece 
-                        type={piece.type} 
+                      <ChessPiece
+                        type={piece.type}
                         color={piece.color}
                         size={36}
                       />
@@ -97,7 +93,7 @@ export function ChessBoard() {
           )}
         </div>
       </div>
-      
+
       {/* File labels (a-h) */}
       <div className="flex justify-around mt-2 px-1">
         {['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map(file => (
@@ -106,7 +102,7 @@ export function ChessBoard() {
           </span>
         ))}
       </div>
-      
+
       {/* Rank labels (1-8) */}
       <div className="absolute left-0 top-1 bottom-1 flex flex-col justify-around -ml-5">
         {[8, 7, 6, 5, 4, 3, 2, 1].map(rank => (

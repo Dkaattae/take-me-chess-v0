@@ -56,46 +56,57 @@ const GameContext = createContext<GameContextType | null>(null)
 const convertApiGameState = (apiState: ApiGameState): GameState => ({
   id: apiState.id,
   board: apiState.board,
-  currentTurn: apiState.currentTurn,
+  currentTurn: apiState.current_turn,
   players: apiState.players.map(player => ({
     id: player.id,
     name: player.name,
     color: player.color,
-    isBot: player.isBot,
-    avatar: player.avatar
+    isBot: player.is_bot,
+    avatar: player.avatar,
+    score: player.score
   })),
   status: apiState.status,
   winner: apiState.winner ? {
     id: apiState.winner.id,
     name: apiState.winner.name,
     color: apiState.winner.color,
-    isBot: apiState.winner.isBot,
-    avatar: apiState.winner.avatar
+    isBot: apiState.winner.is_bot,
+    avatar: apiState.winner.avatar,
+    score: apiState.winner.score
   } : null,
-  selectedPiece: apiState.selectedPiece || null,
-  legalMoves: apiState.legalMoves || [],
+  selectedPiece: apiState.selected_piece || null,
+  legalMoves: apiState.legal_moves || [],
   takeMeState: {
-    declared: apiState.takeMeState.declared,
-    declarer: apiState.takeMeState.declarer || null,
-    exposedPieces: apiState.takeMeState.exposedPieces,
-    capturablePieces: apiState.takeMeState.capturablePieces,
-    mustCapture: apiState.takeMeState.mustCapture
+    declared: apiState.take_me_state.declared,
+    declarer: apiState.take_me_state.declarer || null,
+    exposedPieces: apiState.take_me_state.exposed_pieces,
+    capturablePieces: apiState.take_me_state.capturable_pieces,
+    mustCapture: apiState.take_me_state.must_capture
   },
-  moveHistory: apiState.moveHistory,
-  pieceCount: apiState.pieceCount,
+  moveHistory: apiState.move_history.map(move => ({
+    from: move.from,
+    to: move.to,
+    piece: move.piece,
+    capturedPiece: move.captured_piece,
+    isPromotion: move.is_promotion,
+    promotionPiece: move.promotion_piece
+  })),
+  pieceCount: apiState.piece_count,
+  message: apiState.message,
   pendingMove: null,
-  createdAt: apiState.createdAt,
-  updatedAt: apiState.updatedAt
+  createdAt: apiState.created_at,
+  updatedAt: apiState.updated_at
 })
 
 const convertApiLeaderboard = (apiLeaderboard: ApiLeaderboardEntry[]): LeaderboardEntry[] => {
   return apiLeaderboard.map(entry => ({
-    playerName: entry.playerName,
+    playerName: entry.player_name,
     wins: entry.wins,
     losses: entry.losses,
     draws: entry.draws,
-    gameMode: entry.gameMode,
-    lastPlayed: entry.lastPlayed
+    score: entry.score,
+    gameMode: entry.game_mode,
+    lastPlayed: entry.last_played
   }))
 }
 
@@ -108,9 +119,19 @@ export function GameProvider({ children }: { children: ReactNode }) {
   ])
   const [gameState, setGameState] = useState<GameState | null>(null)
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
-  const [isMuted, setIsMuted] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [isMuted, setIsMuted] = useState(false)
+
+  // Audio helpers defined FIRST to avoid ReferenceError
+  const playSound = useCallback((sound: 'move' | 'capture' | 'takeme') => {
+    if (isMuted) return
+    console.log(`Sound triggered: ${sound}`);
+  }, [isMuted])
+
+  const toggleMute = useCallback(() => {
+    setIsMuted(prev => !prev)
+  }, [])
 
   const setGameMode = useCallback((mode: GameMode) => {
     setGameModeState(mode)
@@ -153,11 +174,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
         game_mode: gameMode,
         players: apiPlayers
       })
-
+      console.log('Game created successfully:', apiGameState);
       const frontendGameState = convertApiGameState(apiGameState)
+      console.log('Converted frontend state:', frontendGameState);
+
       setGameState(frontendGameState)
       setCurrentScreen('game')
+      console.log('Switched screen to: game');
     } catch (err) {
+      console.error('Error in startGame:', err);
       const apiError = handleApiError(err)
       setError(apiError.error)
     } finally {
@@ -177,7 +202,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       setGameState(prev => prev ? {
         ...prev,
         selectedPiece: square,
-        legalMoves: response.legalMoves,
+        legalMoves: response.legal_moves,
         pendingMove: null
       } : null)
     } catch (err) {
@@ -202,22 +227,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
       const apiGameState = await gameApi.makeMove(gameState.id, moveRequest)
       const frontendGameState = convertApiGameState(apiGameState)
-
       setGameState(frontendGameState)
-
-      // Check if it's bot's turn and handle bot move
-      if (frontendGameState.status === 'active' && frontendGameState.players.find(p => p.color === frontendGameState.currentTurn)?.isBot) {
-        // Bot's turn - get bot move
-        try {
-          const botResponse = await gameApi.getBotMove(frontendGameState.id!)
-          const updatedGameState = convertApiGameState(botResponse.gameState)
-          setGameState(updatedGameState)
-        } catch (botErr) {
-          const apiError = handleApiError(botErr)
-          setError(`Bot move failed: ${apiError.error}`)
-        }
-      }
-
       playSound('move')
     } catch (err) {
       const apiError = handleApiError(err)
@@ -228,24 +238,76 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [gameState])
 
   const declareTakeMe = useCallback(() => {
-    // This would be implemented for Take Me! declarations
-    // For now, just a placeholder
-  }, [])
+    if (!gameState?.selectedPiece) return
+    setGameState(prev => prev ? {
+      ...prev,
+      takeMeState: {
+        ...prev.takeMeState,
+        declared: true,
+        declarer: gameState.currentTurn
+      }
+    } : null)
+  }, [gameState])
 
   const cancelTakeMe = useCallback(() => {
-    // This would be implemented for Take Me! cancellations
-    // For now, just a placeholder
+    setGameState(prev => prev ? {
+      ...prev,
+      takeMeState: {
+        ...prev.takeMeState,
+        declared: false,
+        declarer: null
+      }
+    } : null)
   }, [])
 
   const confirmTakeMe = useCallback(async () => {
-    // This would be implemented for Take Me! confirmations
-    // For now, just a placeholder
-  }, [])
+    if (!gameState || !gameState.selectedPiece || !gameState.id) return
 
-  const declareMove = useCallback(() => {
-    // This would be implemented for move declarations
-    // For now, just a placeholder
-  }, [])
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const request = {
+        from: gameState.selectedPiece,
+        to: gameState.pendingMove?.to || gameState.selectedPiece, // This shouldn't happen with current UI flow but for safety
+      }
+
+      // If no pending move, we might need a different UI flow or use the first legal move
+      // But based on take-me-controls, we probably have a selected piece and want to move it
+      const apiGameState = await gameApi.declareTakeMe(gameState.id, request)
+      const frontendGameState = convertApiGameState(apiGameState)
+      setGameState(frontendGameState)
+      playSound('takeme')
+    } catch (err) {
+      const apiError = handleApiError(err)
+      setError(apiError.error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [gameState, playSound])
+
+  const declareMove = useCallback(async () => {
+    if (!gameState?.pendingMove) return
+
+    // We reuse confirmTakeMe logic but with the pending move
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const apiGameState = await gameApi.declareTakeMe(gameState.id!, {
+        from: gameState.pendingMove.from,
+        to: gameState.pendingMove.to
+      })
+      const frontendGameState = convertApiGameState(apiGameState)
+      setGameState(frontendGameState)
+      playSound('takeme')
+    } catch (err) {
+      const apiError = handleApiError(err)
+      setError(apiError.error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [gameState, playSound])
 
   const setPendingMove = useCallback((move: { from: Square; to: Square } | null) => {
     setGameState(prev => prev ? { ...prev, pendingMove: move } : null)
@@ -276,27 +338,23 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const loadLeaderboard = useCallback(async (gameMode?: GameMode) => {
     setIsLoading(true)
+    setError(null)
     try {
       const response = await gameApi.getLeaderboard(gameMode)
-      const frontendLeaderboard = convertApiLeaderboard(response.leaderboard)
+      // Backend returns a direct array, not wrapped in { leaderboard: [...] }
+      const apiEntries = Array.isArray(response) ? response : (response as any).leaderboard || []
+      const frontendLeaderboard = convertApiLeaderboard(apiEntries)
       setLeaderboard(frontendLeaderboard)
     } catch (err) {
+      console.error('Failed to load leaderboard:', err)
       const apiError = handleApiError(err)
       setError(apiError.error)
+      setLeaderboard([]) // Reset to empty on error
     } finally {
       setIsLoading(false)
     }
   }, [])
 
-  const playSound = useCallback((sound: 'move' | 'capture' | 'takeme') => {
-    if (isMuted) return
-    // Sound effects would be played here
-    // Using Web Audio API or audio elements
-  }, [isMuted])
-
-  const toggleMute = useCallback(() => {
-    setIsMuted(prev => !prev)
-  }, [])
 
   const value: GameContextType = {
     currentScreen,

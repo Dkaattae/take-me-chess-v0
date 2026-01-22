@@ -37,7 +37,7 @@ class Move(BaseModel):
     is_promotion: Optional[bool] = False
     promotion_piece: Optional[PieceType] = None
 
-    model_config = ConfigDict(validate_by_name=True)
+    model_config = ConfigDict(validate_by_name=True, from_attributes=True)
 
 
 class BoardState(RootModel[List[List[Optional[Piece]]]]):
@@ -59,6 +59,9 @@ class Player(BaseModel):
     color: PieceColor
     is_bot: bool = False
     avatar: Optional[str] = None
+    score: int = 0
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class GameStatus(str, Enum):
@@ -92,9 +95,13 @@ class GameState(BaseModel):
     legal_moves: List[Square] = []
     take_me_state: TakeMeState
     move_history: List[Move] = []
+    position_history: List[str] = []
     piece_count: Dict[str, int] = Field(default_factory=lambda: {"white": 16, "black": 16})
+    message: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LeaderboardEntry(BaseModel):
@@ -102,8 +109,11 @@ class LeaderboardEntry(BaseModel):
     wins: int = Field(ge=0)
     losses: int = Field(ge=0)
     draws: int = Field(ge=0)
+    score: int = 0
     game_mode: GameMode
     last_played: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Request/Response models
@@ -117,7 +127,7 @@ class MakeMoveRequest(BaseModel):
     to: Square
     promotion_piece: Optional[PieceType] = None
 
-    model_config = ConfigDict(validate_by_name=True)
+    model_config = ConfigDict(validate_by_name=True, from_attributes=True)
 
 
 class DeclareTakeMeRequest(BaseModel):
@@ -125,7 +135,7 @@ class DeclareTakeMeRequest(BaseModel):
     to: Square
     promotion_piece: Optional[PieceType] = None
 
-    model_config = ConfigDict(validate_by_name=True)
+    model_config = ConfigDict(validate_by_name=True, from_attributes=True)
 
 
 class BotMoveResponse(BaseModel):

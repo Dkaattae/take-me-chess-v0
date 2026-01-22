@@ -1,0 +1,27 @@
+{
+  "name": "take-me-chess-v0",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev:backend": "cd backend && make run",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"bgBlue,bgGreen\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dkaattae/take-me-chess-v0.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Dkaattae/take-me-chess-v0/issues"
+  },
+  "homepage": "https://github.com/Dkaattae/take-me-chess-v0#readme",
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
