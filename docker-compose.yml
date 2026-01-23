@@ -18,9 +18,9 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
+  app:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
     restart: always
     environment:
@@ -29,17 +29,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "8000:8000"
-
-  frontend:
-    build:
-      context: .
-      dockerfile: frontend/Dockerfile
-    restart: always
-    ports:
-      - "3000:80"
-    depends_on:
-      - backend
+      - "80:80"
 
 volumes:
   postgres_data:
