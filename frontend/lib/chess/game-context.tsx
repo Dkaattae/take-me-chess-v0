@@ -3,7 +3,7 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 import type {
   GameState, Player, GameMode, PieceColor, Square, Move,
-  TakeMeState, LeaderboardEntry
+  TakeMeState, LeaderboardEntry, PieceType
 } from './types'
 import { gameApi, handleApiError, type ApiGameState, type ApiLeaderboardEntry } from '../api/client'
 import { getBotMove, generateBotName, generateBotAvatar } from './bot'
@@ -39,6 +39,10 @@ interface GameContextType {
   setPendingMove: (move: { from: Square; to: Square } | null) => void
   resetGame: () => void
   endGame: () => Promise<void>
+
+  // Promotion
+  promotionState: { isOpen: boolean; color: PieceColor | null; move: { from: Square; to: Square } | null; isTakeMe: boolean } | null
+  selectPromotionPiece: (pieceType: PieceType) => Promise<void>
 
   // Leaderboard
   leaderboard: LeaderboardEntry[]
@@ -122,6 +126,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
+  const [promotionState, setPromotionState] = useState<{ isOpen: boolean; color: PieceColor | null; move: { from: Square; to: Square } | null; isTakeMe: boolean } | null>(null)
 
   // Audio helpers defined FIRST to avoid ReferenceError
   const playSound = useCallback((sound: 'move' | 'capture' | 'takeme') => {
@@ -216,6 +221,24 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const movePiece = useCallback(async (to: Square) => {
     if (!gameState || !gameState.selectedPiece || !gameState.id) return
 
+    // Check if this move would result in pawn promotion
+    const piece = gameState.board[gameState.selectedPiece.row][gameState.selectedPiece.col]
+    if (piece && piece.type === 'pawn') {
+      const isWhitePromotion = piece.color === 'white' && to.row === 0
+      const isBlackPromotion = piece.color === 'black' && to.row === 7
+
+      if (isWhitePromotion || isBlackPromotion) {
+        // Show promotion dialog
+        setPromotionState({
+          isOpen: true,
+          color: piece.color,
+          move: { from: gameState.selectedPiece, to },
+          isTakeMe: false
+        })
+        return
+      }
+    }
+
     setIsLoading(true)
     setError(null)
 
@@ -235,7 +258,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false)
     }
-  }, [gameState])
+  }, [gameState, playSound])
 
   const declareTakeMe = useCallback(() => {
     if (!gameState?.selectedPiece) return
@@ -288,6 +311,24 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const declareMove = useCallback(async () => {
     if (!gameState?.pendingMove) return
+
+    // Check if this move would result in pawn promotion
+    const piece = gameState.board[gameState.pendingMove.from.row][gameState.pendingMove.from.col]
+    if (piece && piece.type === 'pawn') {
+      const isWhitePromotion = piece.color === 'white' && gameState.pendingMove.to.row === 0
+      const isBlackPromotion = piece.color === 'black' && gameState.pendingMove.to.row === 7
+
+      if (isWhitePromotion || isBlackPromotion) {
+        // Show promotion dialog
+        setPromotionState({
+          isOpen: true,
+          color: piece.color,
+          move: gameState.pendingMove,
+          isTakeMe: true
+        })
+        return
+      }
+    }
 
     // We reuse confirmTakeMe logic but with the pending move
     setIsLoading(true)
@@ -355,6 +396,37 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const selectPromotionPiece = useCallback(async (pieceType: PieceType) => {
+    if (!promotionState || !gameState?.id) return
+
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const moveRequest = {
+        from: promotionState.move!.from,
+        to: promotionState.move!.to,
+        promotion_piece: pieceType
+      }
+
+      let apiGameState
+      if (promotionState.isTakeMe) {
+        apiGameState = await gameApi.declareTakeMe(gameState.id, moveRequest)
+      } else {
+        apiGameState = await gameApi.makeMove(gameState.id, moveRequest)
+      }
+
+      const frontendGameState = convertApiGameState(apiGameState)
+      setGameState(frontendGameState)
+      setPromotionState(null)
+      playSound(promotionState.isTakeMe ? 'takeme' : 'move')
+    } catch (err) {
+      const apiError = handleApiError(err)
+      setError(apiError.error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [promotionState, gameState, playSound])
 
   const value: GameContextType = {
     currentScreen,
@@ -380,7 +452,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
     loadLeaderboard,
     isMuted,
     toggleMute,
-    playSound
+    playSound,
+    promotionState,
+    selectPromotionPiece
   }
 
   return (

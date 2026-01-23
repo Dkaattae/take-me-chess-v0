@@ -3,9 +3,10 @@
 import { useGame } from '@/lib/chess/game-context'
 import { ChessPiece } from './chess-pieces'
 import { cn } from '@/lib/utils'
+import { PromotionDialog } from '../promotion-dialog'
 
 export function ChessBoard() {
-  const { gameState, selectPiece, movePiece, setPendingMove } = useGame()
+  const { gameState, selectPiece, movePiece, setPendingMove, promotionState, selectPromotionPiece } = useGame()
 
   if (!gameState) return null
 
@@ -111,6 +112,15 @@ export function ChessBoard() {
           </span>
         ))}
       </div>
+
+      {/* Promotion Dialog */}
+      {promotionState && (
+        <PromotionDialog
+          isOpen={promotionState.isOpen}
+          color={promotionState.color || 'white'}
+          onSelect={selectPromotionPiece}
+        />
+      )}
     </div>
   )
 }

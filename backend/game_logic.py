@@ -197,9 +197,8 @@ def check_game_over(game_state) -> Optional[Tuple[str, Optional[Player]]]:
             break
             
     if not has_moves:
-        # Stalemate - In Take-Me Chess, the player with no moves wins!
-        winner = next((p for p in game_state.players if p.color == current_color), None)
-        return (GameStatus.WIN, winner)
+        # Stalemate - player has no legal moves, this is a draw
+        return (GameStatus.DRAW, None)
         
     # 3. Threefold Repetition
     current_hash = get_board_hash(game_state.board, game_state.current_turn, game_state.take_me_state.must_capture)
