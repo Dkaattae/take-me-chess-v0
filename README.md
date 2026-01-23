@@ -11,10 +11,50 @@ Do i look like i can play chess?
 So i have this game created using ai dev tools. 
 
 ### how to play
-- pieces move like regular chess game.
-- move pieces for opponant to capture it. if a player lost all pieces or only pawns moving to the end of board left, that player win.
-- score calculation (not for winning). if player declare take me and the pieces got captured, the player get score. if the player declare take me but no pieces can be catured, the player lose 5 points.
-- must click take me to declare take me status and win points. 
+- Objective
+The goal is to **lose all of your own pieces**.     
+The first player with no pieces remaining **wins**.     
+
+- Turn Structure
+1. Select a piece and move it to a legal square.   
+2. After moving, choose one:   
+   - **End Turn**, or   
+   - **Declare “Take Me”**   
+
+- Piece Rules
+Pieces move according to **standard chess rules**, with the exceptions below.   
+**There is no check or checkmate**.   
+The king has **no royal status** and may be captured.   
+Capturing the king does **not** end the game.   
+
+- Captures
+Captures are **only mandatory when “Take Me” is declared**.   
+If “Take Me” is declared:   
+  The opponent **must capture** one of your pieces if possible.   
+  Only **one piece may be captured per turn**.   
+If “Take Me” is **not** declared:   
+  Captures are **optional**, even if available.   
+
+This is intentional and differs from giveaway chess.   
+
+- Scoring (Optional)
+Scoring applies **only** when “Take Me” is declared.   
+If one of your pieces is captured, you **gain points**.   
+If no capture is possible, you **lose 5 points**.   
+Score does **not** affect winning or losing.   
+
+- Pawn Promotion
+Pawns must be promoted upon reaching the final rank.   
+A pawn may be promoted to **any piece**, including a **king**.   
+Multiple kings may exist on the board.   
+
+- End of Game
+A player **wins** when they have no pieces remaining.   
+If a player has **no legal moves**, the game ends in a **draw (stalemate)**.   
+
+- Limitations
+Castling is not allowed.   
+En passant is not supported.   
 
 ### functionality
 - leaderboard: after playing, the game stats will be in leaderboard
